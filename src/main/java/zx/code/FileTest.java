@@ -1,7 +1,7 @@
 package zx.code;
 
-import zx.code.utils.ListFilesInDirectory;
-import zx.code.utils.strategy.Impl.PrefixFilterStrategy;
+import zx.code.utils.directory.ListFilesInDirectory;
+import zx.code.utils.directory.strategy.Impl.PrefixFilterStrategy;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;

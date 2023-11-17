@@ -1,5 +1,7 @@
 package zx.code;
 
+import org.jruby.RubyProcess;
+
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -10,31 +12,70 @@ import java.util.regex.Pattern;
  */
 public class myTest {
     public static void main(String[] args) {
-        String inputString = "l Ar num Ar num";
-        String[] result = extractNameAndNum(inputString);
+        String inputString = " .Fl s";
+        String tt = "[^.][F][l]\\s+";
+//        System.out.println(inputString.contains(tt));
+//        String[] result = extractNameAndNum(inputString);
+        extract(inputString);
 
-        if (result != null) {
-            String name = result[0];
-            String num = result[1];
-            System.out.println("Name: " + name);
-            System.out.println("Num: " + num);
-        } else {
-            System.out.println("未匹配到指定格式");
+
+
+    }
+
+
+    public static void extract(String inputString){
+        inputString = inputString.trim();
+        // 匹配双引号中的内容
+        String pattern = "[^\\w+][\\\\.][F][l]\\s+";
+        Pattern regex = Pattern.compile(pattern);
+        Matcher matcher = regex.matcher(inputString);
+        while (matcher.find()){
+            System.out.println(
+                    inputString.replace(matcher.group(0),"-")
+            );
         }
     }
 
-    public static String[] extractNameAndNum(String inputString) {
-        String regex = "(\\w+\\s+[A][r]\\s+\\w+\\s+[A][r].+)";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(inputString);
 
-        if (matcher.find()) {
-            String name = matcher.group(1);
-            String num = matcher.group(2);
-            return new String[]{name, num};
-        } else {
-            return null;
+
+    public static String[] extractNameAndNum(String inputString) {
+        inputString = inputString.trim();
+        // 匹配双引号中的内容
+        String pattern = "([\"][^\"]+[\"])";
+        Pattern regex = Pattern.compile(pattern);
+        Matcher matcher = regex.matcher(inputString);
+        int start = 0;
+        int end = 0;
+        String before = "";
+        String after = "";
+        System.out.println(inputString);
+        // 处理匹配到的内容和剩余部分
+        while (matcher.find()) {
+            start = matcher.start();
+            before = inputString.substring(end,start);
+            end = matcher.end();
+            after = inputString.substring(end,inputString.length());
+            System.out.println("================================");
+            System.out.println(matcher.group(0));
+            System.out.println(before);
+
+            System.out.println(after);
+
         }
+
+        if(!after.equals("")){
+            // 找到最后部分的单词部分
+            Pattern pattern1 = Pattern.compile("(\\w+)");
+            Matcher matcher1 = pattern1.matcher(after);
+            while (matcher1.find()){
+                after = after.replace(matcher1.group(0),"<u>"+matcher1.group(0)+"</u>");
+
+            }
+        }
+        System.out.println(after);
+
+        return new String[]{""};
+
     }
 }
 

@@ -1,7 +1,7 @@
-package zx.code.utils;
+package zx.code.utils.html;
 
-import jnr.ffi.annotations.In;
-import org.jruby.RubyProcess;
+import zx.code.utils.html.convert.common.EnumBlockListStyle;
+import zx.code.utils.html.convert.common.PatternReplaceEntity;
 
 import java.io.*;
 import java.nio.file.FileSystems;
@@ -21,6 +21,9 @@ import java.util.zip.GZIPInputStream;
  */
 
 public class GroffToHtmlConverter {
+
+    private EnumBlockListStyle listStyle;
+
     private static final String HEADER =             "<html>\n" +
             "  <head>\n" +
             "    <meta charset=\"utf-8\" />\n" +
@@ -114,32 +117,50 @@ public class GroffToHtmlConverter {
         INLINE_TAGS.put(".LP", "<br />");
         INLINE_TAGS.put(".IB", "<b><i>%s</i></b>");
         INLINE_TAGS.put(".FN", "<i>%s</i>");
-        INLINE_TAGS.put(".SM", "<span style=\"font-size: 9pt;\"></span>");
+        INLINE_TAGS.put(".SM", "<span style=\"font-size: 9pt;\">%s</span>");
         INLINE_TAGS.put(".RB", "<b>%s</b>");
         INLINE_TAGS.put(".PD", "<!--%s-->");
         INLINE_TAGS.put(".\"", "<!--%s-->");
         INLINE_TAGS.put(".B", "<b>%s</b>");
         INLINE_TAGS.put("\\.B", "<b>%s</b>");
-        INLINE_TAGS.put(".BR", "<b>%s</b>");
-        INLINE_TAGS.put(".I", "<i>%s</i>");
-        INLINE_TAGS.put(".IR", "<i>%s</i>");
-        INLINE_TAGS.put(".PP", "<br />");
-        INLINE_TAGS.put(".P", "<br />");
-        INLINE_TAGS.put(".TP", "<br />");
+//        INLINE_TAGS.put(".BR", "<b>%s</b>");
+        INLINE_TAGS.put(".I", "<u>%s</u>");     // 下划线
+//        INLINE_TAGS.put(".IR", "<u>%s</u>");    // 下划线
+        INLINE_TAGS.put(".PP", "<p /><p>");
+        INLINE_TAGS.put(".Pp", "<p /><p>");
+        INLINE_TAGS.put(".P", "<p /><p>");
+        INLINE_TAGS.put(".TP", "<br/>");
         INLINE_TAGS.put(".br", "<br />");
         INLINE_TAGS.put(".IX ", "</div><div style=\"padding-left: 4em;\">");
         INLINE_TAGS.put("\\&", "<span style=\"margin-right: 1em\">%s</span>");
         INLINE_TAGS.put("\\fR","");
         INLINE_TAGS.put(".ft","");      // 不知道是什么
         INLINE_TAGS.put(".ne","");      // 不知道是什么
+        INLINE_TAGS.put(".St","%s");    // 不知道是什么
         INLINE_TAGS.put("tr","");
         INLINE_TAGS.put("'br","");
         INLINE_TAGS.put(".rr","");
         INLINE_TAGS.put(".\\}","");
         INLINE_TAGS.put(".rm","");
         INLINE_TAGS.put(".Nd","- %s");  // col.1 中替换为 -
+        INLINE_TAGS.put(".BI","<b><i>%s</i></b>");  // .BI 命令（用于生成同时具有斜体和粗体的文本）
+
+
     }
 
+    /**
+     * 文本内需要替换的内容
+     */
+
+    private static final TreeMap<String, PatternReplaceEntity> TEXT_REPLACE_TAG = new TreeMap<>(Collections.reverseOrder());
+    static
+    {
+
+        TEXT_REPLACE_TAG.put(".Fl ",new PatternReplaceEntity(Pattern.compile("[\\\\.][F][l]\\s+"),"-"));
+        TEXT_REPLACE_TAG.put("Fl ",new PatternReplaceEntity(Pattern.compile("\\bFl\\s+"),"-"));
+        TEXT_REPLACE_TAG.put("Ar ",new PatternReplaceEntity(Pattern.compile("\\bAr\\s+"),"-"));
+
+    };
     private static final TreeMap<String, String> TEXT_PART_TAGS = new TreeMap<>(Collections.reverseOrder());
 
     static {
@@ -150,6 +171,7 @@ public class GroffToHtmlConverter {
         TEXT_PART_TAGS.put("\\f(CI", "<span class=\"CI\">");
         TEXT_PART_TAGS.put("\\f(CB", "<span class=\"CB\">");
         TEXT_PART_TAGS.put("\\fI", "<i>");
+
     }
 
     private static final TreeMap<String, String> CLOSING_TAGS = new TreeMap<>(Collections.reverseOrder());
@@ -203,11 +225,15 @@ public class GroffToHtmlConverter {
     private String parentUrl = "";
     public GroffToHtmlConverter(String parentPath){
         this.parentUrl = parentPath;
+
+        // 需要记录状态或者读取参数的，都要进行函数的处理
+
         INLINE_FUNCTIONS.put(".IP", this::_startParagraph);
         INLINE_FUNCTIONS.put(".SH", this::_startHeader);
         INLINE_FUNCTIONS.put(".Sh", this::_startHeader);
-        INLINE_FUNCTIONS.put(".RS", this::_padRight);
-        INLINE_FUNCTIONS.put(".RE", this::_padLeft);
+        INLINE_FUNCTIONS.put(".RS", this::_padRight);   // 开始一个相对缩进块，其后的文本会受到相对缩进的影响，整体右移。
+        INLINE_FUNCTIONS.put(".RE", this::_padLeft);    // 结束缩进，和.RS一起使用
+//        INLINE_FUNCTIONS.put(".TP",this::)
         INLINE_FUNCTIONS.put(".SS", this::_startSubheader);
         INLINE_FUNCTIONS.put(".Vb", this::_startPre);
         INLINE_FUNCTIONS.put(".Ve", this::_finishPre);
@@ -216,13 +242,32 @@ public class GroffToHtmlConverter {
         INLINE_FUNCTIONS.put(".Dd",this::_recorderDate);    // 添加处理 .Dd，记录时间信息
         INLINE_FUNCTIONS.put(".Xr",this::_generateLinkFormat); // 需要生成链接的格式，link(2)，后面会处理
         INLINE_FUNCTIONS.put(".Op",this::_optionConvert);      // 是用于标记可选参数（Optional Parameter）的命令
-        INLINE_FUNCTIONS.put(".Nm",this::_getNm);   // 获取文本的元数据，名称
+        INLINE_FUNCTIONS.put(".Nm",this::_getNm);   // 获取文本的元数据，名称 title
+        INLINE_FUNCTIONS.put(".BI",this::_analyticCrossFormat);  // 解析 .BI .BR 这种交叉
+        INLINE_FUNCTIONS.put(".BR",this::_analyticCrossFormat); //
+        INLINE_FUNCTIONS.put(".IR",this::_analyticCrossFormat);
+
+        INLINE_FUNCTIONS.put(".ad",this::_changlineDistance);   // 调整行距
+        INLINE_FUNCTIONS.put(".EX",this::_exampleBlock);        // .EX 是一个命令，用于表示一个例子块（Example Block）
+        INLINE_FUNCTIONS.put(".EE",this::_exampleBlock);        // .EE 是一个命令，用于结束一个例子块（Example Block）
+        INLINE_FUNCTIONS.put(".Ex",this::_exampleBlock);
+        INLINE_FUNCTIONS.put(".El",this::_exampleBlock);
+        INLINE_FUNCTIONS.put(".TS",this::_table);               // 处理表格，开始标志
+        INLINE_FUNCTIONS.put(".TE",this::_table);               // 处理表格，结束标志
+        INLINE_FUNCTIONS.put(".Bl",this::_blockList);            // 块列表，每行用 .IT，.El 可以标识 .Bl 的结束
+        INLINE_FUNCTIONS.put(".It",this::_blockListrow);         // 每行数据
+        INLINE_FUNCTIONS.put(".El",this::_blockListEnd);         // 表结束
+        INLINE_FUNCTIONS.put(".TP",this::_tagTable);              // 带标签的表
+        INLINE_FUNCTIONS.put(".Ev",this::_setEnv);              // 设置环境变量
+        INLINE_FUNCTIONS.put(".Eg",this::_getEnv);              // 获取环境变量
+
 
     }
 
 
 
     static int DEFAULT_FONT_SIZE = 10;
+    static double DEFAULT_LINE_DISTANCE = 0;
 
     private Boolean pre_open = false;
     private Boolean level1_open = false;
@@ -233,12 +278,14 @@ public class GroffToHtmlConverter {
     private Boolean recording = false;
     private List<String> closing_tags = new ArrayList<>();
     private Integer current_font_size = DEFAULT_FONT_SIZE;
+    private Double current_line_distance = DEFAULT_LINE_DISTANCE;
     private Integer header_id = 0;
     private List<Heading> headers = new ArrayList<>();
     private String page_title = "";
-    ////////////////////////////////////////////////////////////////
+    ////////////////////////// 正则表达式 //////////////////////////////////////
 
     private static final String FONT_CHANGING_OPEN = "</span><span style=\"font-size:%spt;\">";
+    private static final String LINE_DISTANCE_CHANGE = "</span><span style=\"line-height:%s;\">";
 
     private static final Pattern LOCAL_REF_RE1 = Pattern.compile("(?<=<i>)([A-Za-z0-9-]*?)</i>\\((\\d+)\\)");
     private static final Pattern LOCAL_REF_RE2 = Pattern.compile("(?<=<b>)([A-Za-z0-9-]*?)</b>\\((\\d+)\\)");
@@ -253,14 +300,21 @@ public class GroffToHtmlConverter {
     };
 
     // 抽取 link(2) 的表达式
-    private static final Pattern EXTRACT_INSTRUCT = Pattern.compile("(\\w*)\\s*\\((\\d+\\w*)\\)");
+    private static final Pattern EXTRACT_INSTRUCT = Pattern.compile("(\\w+)\\s*\\((\\d+\\w*)\\)");
 
-    // 抽取操作的参数识别
+    // 抽取操作的参数识别 .Op
     private static final Pattern[] OPTIONS_PARAMETER_PATTERNS = {
             Pattern.compile("(\\w+\\s+[A][r]\\s+\\w+\\s+[A][r].+)"),
             Pattern.compile("(\\w+\\s+[A][r]\\s+\\w+)"),
             Pattern.compile("(\\w+)")
     };
+
+    /**
+     * 双引号识别
+     */
+    private static final Pattern DOUBLE_QUATATION_MAKRKS = Pattern.compile("([\"][^\"]+[\"])");
+
+
 
 
 
@@ -280,6 +334,11 @@ public class GroffToHtmlConverter {
                 inlineStyle = "display:inline;";
                 part2 = "0";
             }
+        }
+        if(part2.equals("")){
+            return String.format("%s<h4 style=\"%s\">%s</h4><div " +
+                            "style=\"%s\">",
+                    closing, inlineStyle, part1, inlineStyle);
         }
         return String.format("%s<h4 style=\"%s\">%s</h4><div " +
                         "style=\"padding-left: %sem;%s\">",
@@ -319,7 +378,8 @@ public class GroffToHtmlConverter {
         if (matcher.find()) {
             result = matcher.group(1);
         } else if(data.length()>1){
-            result = data.split(" ")[1];
+//            result = data.split(" ")[1];
+            result = data;
         }
 
         return String.format("%s<h2 id=\"%s\">%s</h2><div style=\"padding-left: 3em;\">",
@@ -351,52 +411,49 @@ public class GroffToHtmlConverter {
 
     private String _mainTitle(String data) {
         recording = true;
-        data = data.replace("\"","");
-        String[] dataItems = data.trim().split("\\s+", 4);
+        String[] dataItems = data.trim().split("\\s+", 5);
 
         try{
-            info.setName(dataItems[0]);
-            info.setNum(dataItems[1]);
-            info.setDate(dataItems[2]);
-            info.setVer(dataItems[4]);
+            info.setTitle(dataItems[0].replace("\"",""));
+            info.setSection(dataItems[1].replace("\"",""));
+            info.setDate(dataItems[2].replace("\"",""));
+            info.setSource(dataItems[3].replace("\"",""));
+            info.setManual(dataItems[4].replace("\"",""));
         }
         catch (Exception e){
             System.out.println("拿到的 Title 信息不足");
         }
 
-        String header1 = String.format("%s (%s)", info.getName(), info.getNum());
+        String header1 = String.format("%s (%s)", info.getTitle(), info.getSection());
         String header2 = "General Commands Manual";
         page_title = String.format("<div><h1 class=\"left-block\">%s</h1>" +
                 "<h1 class=\"center-block\">%s</h1>" +
                 "<h1 class=\"right-block\">%s</h1></div>", header1, header2, header1);
-        return page_title;
+        return "";
     }
 
     /**
      * 记录 title 的信息
+     * .Dt 是一个用于定义整个文档标题和其他信息的命令
+     * .Dt title section [date] [source] [manual]
      * @param data
      * @return {@link String}
      */
     private String _startTitle(String data) {
         recording = true;
-        data = data.trim();
-        String[] titleInfos = data.split(" ");
-        if (titleInfos.length==0){
-            return data;
+        String[] dataItems = data.trim().split("\\s+", 5);
+
+        try{
+            info.setTitle(dataItems[0].replace("\"",""));
+            info.setSection(dataItems[1].replace("\"",""));
+            info.setDate(dataItems[2].replace("\"",""));
+            info.setSource(dataItems[3].replace("\"",""));
+            info.setManual(dataItems[4].replace("\"",""));
         }
-        if(titleInfos.length==1){
-            info.setName(titleInfos[0]);
+        catch (Exception e){
+            System.out.println("拿到的 Title 信息不足");
         }
-        else if(titleInfos.length==2){
-            info.setName(titleInfos[0]);
-            info.setNum(titleInfos[1]);
-        }
-        else if(titleInfos.length==3 || titleInfos.length==4){
-            info.setName(titleInfos[0]);
-            info.setNum(titleInfos[1]);
-            info.setDate(titleInfos[2]);
-        }
-        String header1 = String.format("%s (%s)", info.getName(), info.getNum());
+        String header1 = String.format("%s (%s)", info.getTitle(), info.getSection());
         String header2 = "General Commands Manual";
         page_title = String.format("<div><h1 class=\"left-block\">%s</h1>" +
                 "<h1 class=\"center-block\">%s</h1>" +
@@ -479,11 +536,315 @@ public class GroffToHtmlConverter {
      * @return {@link String}
      */
     private String _getNm(String data){
-        return info.getName().toLowerCase();
+        return info.getTitle().toLowerCase();
     }
 
 
-    /////////////////////////////////////////////////////////////////////
+    /**
+     * 分析交叉的格式，只有引号内的数据正常显示，不加引号的加下划线
+     *
+     * @param data
+     * @return {@link String}
+     */
+    private String _analyticCrossFormat(String data){
+        int length = data.trim().trim().split("\\s+").length;
+        if(length==1 || length==0){
+//            return "<i>"+data+"</i>";
+            return data;
+        }
+        data = data.trim();
+        Matcher matcher = DOUBLE_QUATATION_MAKRKS.matcher(data);
+        StringBuilder result = new StringBuilder();
+        int start = 0;
+        int end = 0;
+        String before = "";
+        String after = data;
+//        result.append("<i>");
+        // 处理匹配到的内容和剩余部分
+        while (matcher.find()) {
+            start = matcher.start();
+            before = data.substring(end,start);
+            end = matcher.end();
+            after = data.substring(end,data.length());
+            if(!before.equals("")){
+                // 找到前面部分的单词部分
+                Pattern pattern = Pattern.compile("([^\\s]+[(]*\\.*[)]*)");
+                Matcher matcher1 = pattern.matcher(before);
+                while (matcher1.find()){
+                    before = before.replace(matcher1.group(0),"<i><u>"+matcher1.group(0)+"</u></i>");
+                }
+                result.append(before);
+            }
+            result.append(matcher.group(0).split("\"")[1]);
+        }
+        if(!after.equals("")){
+            // 找到最后部分的单词部分
+            Pattern pattern = Pattern.compile("([^\\s]+[(]*\\.*[)]*)");
+            Matcher matcher1 = pattern.matcher(after);
+            while (matcher1.find()){
+                after = after.replace(matcher1.group(0),"<i><u>"+matcher1.group(0)+"</u></i>");
+            }
+        }
+        result.append(after);
+//        result.append("</i>");
+        return result.toString();
+    }
+
+
+    private String _analyticCrossFormat2(String data){
+        int length = data.trim().trim().split("\\s+").length;
+        if(length==1 || length==0){
+            return "<b>"+data+"</b>";
+        }
+        data = data.trim();
+        Matcher matcher = DOUBLE_QUATATION_MAKRKS.matcher(data);
+        StringBuilder result = new StringBuilder();
+        int start = 0;
+        int end = 0;
+        String before = "";
+        String after = data;
+        result.append("<b>");
+        // 处理匹配到的内容和剩余部分
+        while (matcher.find()) {
+            start = matcher.start();
+            before = data.substring(end,start);
+            end = matcher.end();
+            after = data.substring(end,data.length());
+            if(!before.equals("")){
+                // 找到前面部分的单词部分
+                Pattern pattern = Pattern.compile("([^\\s]+[(]*\\.*[)]*)");
+                Matcher matcher1 = pattern.matcher(before);
+                while (matcher1.find()){
+                    before = before.replace(matcher1.group(0),"<u>"+matcher1.group(0)+"</u>");
+                }
+                result.append(before);
+            }
+            result.append(matcher.group(0).split("\"")[1]);
+        }
+        if(!after.equals("")){
+            // 找到最后部分的单词部分
+            Pattern pattern = Pattern.compile("([^\\s]+[(]*\\.*[)]*)");
+            Matcher matcher1 = pattern.matcher(after);
+            while (matcher1.find()){
+                after = after.replace(matcher1.group(0),"<u>"+matcher1.group(0)+"</u>");
+            }
+        }
+        result.append(after);
+        result.append("</b>");
+        return result.toString();
+    }
+
+    private String _changlineDistance(String lineDistance){
+
+        lineDistance  = lineDistance.trim();
+        if(lineDistance.contains("\\d*")){
+            current_line_distance = Double.parseDouble(lineDistance);
+            return String.format(LINE_DISTANCE_CHANGE,current_line_distance);
+        }
+        else if(lineDistance.contains("\\w")){
+            if(lineDistance.equals("l")){
+                return "</span><span style=\"line-height:1.5;\">";
+            }
+            if(lineDistance.equals("r")){
+                return "</span><span style=\"line-height:1;\">";
+            }
+            if(lineDistance.equals("i")){
+                return "</span>";
+            }else {
+                return "</span>";
+            }
+        }
+        else {
+            return "</span>";
+        }
+    }
+
+
+    /**
+     * 标记一个文本块，通常用于显示源代码或其他文本的示例
+     * .EX
+     * This is an example block.
+     * It can contain multiple lines of text.
+     * .EE
+     * @param data
+     * @return {@link String}
+     */
+    private Boolean ExStart = true;
+    private String _exampleBlock(String data){
+        if(ExStart){
+            ExStart = !ExStart;
+            return "<pre>";
+        }
+        else {
+            ExStart = !ExStart;
+            return "</pre>";
+        }
+    }
+
+    /**
+     * 生成表
+     * @param data
+     * @return {@link String}
+     */
+    private String _table(String data){
+
+
+        return "";
+    }
+
+
+    /**
+     * 块列表（block list）块列表通常由 .It（item）命令组成，每个 .It 命令表示列表中的一个项目。
+     * @param data
+     * @return {@link String}
+     */
+    private String _blockList(String data){
+
+        if(data.contains("bullet") || data.contains("itemize") || data.contains("ohang")){
+            listStyle = EnumBlockListStyle.BULLE;
+        }
+        else if(data.contains("enum")){
+            listStyle = EnumBlockListStyle.ENUM;
+        }
+        else if(data.contains("tag")){
+
+            listStyle = EnumBlockListStyle.TAG;
+        }
+        else {
+            return "<br/>";
+        }
+
+        return listStyle.getListDom1().getStartTag();
+    }
+
+    private Boolean firstBlockListrow = true;
+    private String _blockListrow(String data){
+        if(listStyle != EnumBlockListStyle.TAG){
+            if(firstBlockListrow){
+                return listStyle.getListDom2().getStartTag()+ data ;
+            }
+            return listStyle.getListDom2().getEndTag()+
+                    listStyle.getListDom2().getStartTag()+
+                    data ;
+        }
+        else {
+            if(firstBlockListrow){
+                return listStyle.getListDom2().getStartTag()+ data + listStyle.getListDom3().getStartTag();
+            }
+            return listStyle.getListDom2().getEndTag()+
+                    listStyle.getListDom2().getStartTag()+
+                    data +
+                    listStyle.getListDom3().getStartTag()
+                    ;
+
+        }
+    }
+
+    private String _blockListEnd(String data){
+
+        if(listStyle != EnumBlockListStyle.TAG){
+            return listStyle.getListDom2().getEndTag()+listStyle.getListDom1().getEndTag();
+        }
+        else {
+            // tag 类型需要单独处理
+
+            return  listStyle.getListDom3().getEndTag() + listStyle.getListDom2().getEndTag()+listStyle.getListDom1().getEndTag();
+        }
+
+    }
+
+    /**
+     * 实现 .TP 的带标签的列表
+     * .TP 后面是有参数的，但是我直接舍弃参数了
+     * @param data
+     * @return {@link String}
+     */
+    private int tagTableResource  = 0;
+    private String _tagTable(String data){
+        listStyle = EnumBlockListStyle.TAG;
+        tagTableResource = 1;
+        return listStyle.getListDom1().getEndTag()+listStyle.getListDom1().getStartTag();
+    }
+
+
+    private String _setEnv(String data){
+        info.getEnvironment().add(data.trim());
+        return data;
+    }
+
+    /**
+     * 暂时还没有用到
+     * @param data
+     * @return {@link String}
+     */
+    private String _getEnv(String data){
+        StringBuilder result = new StringBuilder();
+        return info.getEnvironment()+" "+data;
+    }
+
+
+
+    /////////////////////////////// 功能方法，用于在处理一行数据时使用 //////////////////////////////////////
+
+
+    /**
+     * 检查表的 tag 是否结束
+     * 不同的表有不同的策略：
+     *  .TP 是检测两行，第一行为 Tag，第二行为 data
+     *  .Bl 是检测 .IT
+     * @param data
+     * @return {@link Boolean}
+     */
+    private String BuildtableText(String data){
+        // 说明没有文本，跳过
+        if (data.trim().length()<1 || tagTableResource==0){
+            return data;
+        }
+        // 有文本，且是第一行
+        if(tagTableResource==1){
+            tagTableResource += 1;
+            // 第二个标签
+            data = listStyle.getListDom2().getStartTag()+data+listStyle.getListDom2().getEndTag();
+
+        }else {
+            // 第三个标签
+            data = listStyle.getListDom3().getStartTag()+data+listStyle.getListDom3().getEndTag();
+        }
+
+        return data;
+    }
+
+    /**
+     * 检查 TP是否结束
+     * 第一行一定是 tag
+     * data 截至有以下可能：
+     *      1. 遇到了 .TP
+     *      2.
+     * @param line
+     * @return {@link Boolean}
+     */
+    private Boolean CheckTPtagEnd(String line){
+
+        return true;
+    }
+
+
+    private String replaceTags(String line){
+        line = line.trim();
+        for (Map.Entry<String,PatternReplaceEntity> entry : TEXT_REPLACE_TAG.entrySet()){
+
+            Pattern pattern = entry.getValue().getPattern();
+            String replaceString = entry.getValue().getReplaceString();
+            Matcher matcher = pattern.matcher(line);
+            while (matcher.find()){
+                line = line.replace(matcher.group(0),replaceString);
+            }
+        }
+        return line;
+    }
+
+
+
     public int getHeaderId() {
         return ++header_id;
     }
@@ -517,7 +878,7 @@ public class GroffToHtmlConverter {
      */
     private String mainFooter() {
         return String.format("<div><h1 class=\"left-block\">%s</h1><h1 class=\"center-block\">%s</h1><h1 class=\"right-block\">%s</h1></div>",
-                info.getVer(), info.getDate(), String.format("%s (%s)", info.getName(), info.getNum()));
+                info.getSource(), info.getDate(), String.format("%s (%s)", info.getTitle(), info.getSection()));
 
     }
 
@@ -588,62 +949,12 @@ public class GroffToHtmlConverter {
     }
 
     ////////////////////////////////////////////////////////////////////////
-    private String apply_part_tags_once(String line){
 
-        int min_pos = line.length();
-        String current_tag = "";
-        String result = "";
-        // 找到最靠前的 tag
-        for(Map.Entry<String,String> entry : TEXT_PART_TAGS.entrySet()){
-            if(line.contains(entry.getKey())){
-                if(line.indexOf(entry.getKey())<min_pos){
-                    min_pos = line.indexOf(entry.getKey());
-                    current_tag = entry.getKey();
-                }
-            }
-        }
-
-        //
-        for(String tag : CLOSING_ALL_TAG_VARIANTS){
-            if(line.contains(tag) && line.indexOf(tag)<min_pos){
-                while (closing_tags.size()>0){
-                    result += closing_tags.get(-1);
-                    closing_tags.remove(-1);
-                }
-                return line.replaceFirst(tag,result);
-            }
-        }
-
-        for(String CLOSING_TAG : CLOSING_TAG_VARIANTS){
-
-            if(line.contains(CLOSING_TAG) && line.indexOf(CLOSING_TAG)<min_pos){
-                if(closing_tags.size()>0){
-                    result = closing_tags.get(-1);
-                    closing_tags.remove(-1);
-                }
-                else {
-                    result = "</.....>";
-                }
-                return line.replaceFirst(CLOSING_TAG,result);
-            }
-        }
-        if(!current_tag.equals("")){
-            return line;
-        }
-
-        if(closing_tags.size()>0
-                && closing_tags.get(-1).equals(CLOSING_TAGS.get(current_tag))
-                && closing_tags.get(-1).equals("</i>")
-        ){
-            return line.replaceFirst(current_tag,"");
-        }
-        closing_tags.add(CLOSING_TAGS.get(current_tag));
-        return line.replaceFirst(current_tag,TEXT_PART_TAGS.get(current_tag));
-    }
     public String applyPartTagsOnce(String line) {
         int minPos = line.length();
         String currentTag = "";
 
+        // 找文本中的 tag
         for (Map.Entry<String, String> entry : TEXT_PART_TAGS.entrySet()) {
             String tag = entry.getKey();
             if (line.contains(tag) && line.indexOf(tag) < minPos) {
@@ -652,6 +963,7 @@ public class GroffToHtmlConverter {
             }
         }
 
+        // 找文本中关闭的 tag
         for (String tag : CLOSING_ALL_TAG_VARIANTS) {
             if (line.contains(tag) && line.indexOf(tag) < minPos) {
                 StringBuilder result = new StringBuilder();
@@ -669,14 +981,19 @@ public class GroffToHtmlConverter {
             }
         }
 
-        if (currentTag.isEmpty()) {
+        if (currentTag.isEmpty() || currentTag.equals("")) {
             return line;
         }
-
-        if (!closing_tags.isEmpty() && closing_tags.get(closing_tags.size() - 1).equals(CLOSING_TAGS.get(currentTag))
-                && closing_tags.get(closing_tags.size() - 1).equals("</i>")) {
-            return line.replace(currentTag, "");
+        try{
+            if (!closing_tags.isEmpty() && closing_tags.get(closing_tags.size() - 1).equals(CLOSING_TAGS.get(currentTag))
+                    && closing_tags.get(closing_tags.size() - 1).equals("</i>")) {
+                return line.replace(currentTag, "");
+            }
         }
+        catch (Exception e){
+            System.out.println(e);
+        }
+
 
         closing_tags.add(CLOSING_TAGS.get(currentTag));
         return line.replace(currentTag, TEXT_PART_TAGS.get(currentTag));
@@ -712,7 +1029,10 @@ public class GroffToHtmlConverter {
     }
 
     public String modifyLine(String line) {
+        String source = new String(line);
         line = line.trim();
+
+        line = reBuildInstruction(line); // 先把格式重构了，防止后面出问题
         line = apply_not_closing_tags(line);
         line = apply_part_tags(line);
         line = changeFontSize(line);
@@ -720,59 +1040,37 @@ public class GroffToHtmlConverter {
         for (Map.Entry<String, Function<String, String>> entry : INLINE_FUNCTIONS.entrySet()) {
             String tag = entry.getKey();
             Function<String, String> func = entry.getValue();
-            try {
-                if (line.startsWith(tag)) {
-                    line = func.apply(line.substring(tag.length()));
-                }
+            if (line.startsWith(tag)) {
+                line = func.apply(line.substring(tag.length()));
             }
-            catch(Exception e) {
-                System.out.println(e);
-            }
-
-
         }
         for (Map.Entry<String, String> entry : INLINE_TAGS.entrySet()) {
             String tag = entry.getKey();
             String result = entry.getValue();
 
-
             if (line.startsWith(tag)) {
                 line = String.format(result, line.substring(tag.length()).trim());
             }
         }
+        // 替换所有要替换的数据
+        line = replaceTags(line);
+//        // 构建表格数据
+//        line = BuildtableText(line);
+        // 编译超链接符串
         line = compileInstruction(line);
 
         if (!pre_open) {
             line = localRefSelection(line);
 //            line = globalRefSelection(line);
         }
-        return line;
-    }
-    private String convertGroffToHtml(String line) {
-
-        StringBuilder htmlBuilder = new StringBuilder();
-        // 检查是否有标识
-        for (Map.Entry<String, String> entry : INLINE_TAGS.entrySet()) {
-            String groffTag = entry.getKey();
-            if (line.startsWith(groffTag)) {
-                // 提取标识后的文本
-                String textAfterTag = line.substring(groffTag.length()).trim();
-
-                // 应用内联标记
-                textAfterTag = applyInlineTags(textAfterTag);
-
-                // 构建相应的 HTML 标签
-                String htmlTag = entry.getValue();
-                String htmlLine = String.format("<%s>%s</%s>", htmlTag, textAfterTag, htmlTag);
-
-                // 添加到 HTML 结果中
-                htmlBuilder.append(htmlLine);
-                break; // 处理完当前行就跳出内循环
-            }
+        // 判断是不是只有文本
+        if(source.trim().equals(line)){
+            line = source;
         }
 
-        return htmlBuilder.toString();
+        return line;
     }
+
 
     public String readCompressedGroffFile(String filePath) throws IOException {
 
@@ -809,8 +1107,8 @@ public class GroffToHtmlConverter {
     private String generateUrl(Info instruction){
         String name = "";
         String num = "";
-        name = instruction.getName();
-        num = instruction.getNum();
+        name = instruction.getTitle();
+        num = instruction.getSection();
 
         Path filePath = FileSystems.getDefault().getPath(parentUrl,"man"+num);
         filePath = FileSystems.getDefault().getPath(filePath.toString(),name+"."+num+"."+"html");
@@ -819,17 +1117,33 @@ public class GroffToHtmlConverter {
 
     }
 
+
+    /**
+     * 重构 lin () 格式为 link()
+     * @param line
+     * @return {@link String}
+     */
+    private String reBuildInstruction(String line){
+        Pattern reBuilder = Pattern.compile("(\\w+\\s*\\([^()]*\\))");
+        Matcher matcher = reBuilder.matcher(line);
+        while (matcher.find()){
+            line = line.replace(matcher.group(0),
+                    matcher.group(0).replaceAll("\\s+","")
+            );
+        }
+        return line;
+    }
     private String compileInstruction(String line){
-//        line = line.substring(".BR".length()).trim();
         Matcher matcher = EXTRACT_INSTRUCT.matcher(line);
         StringBuffer  result = new StringBuffer();
 
         if (matcher.find()){
             String link = "<a href = \"%s\">%s</a>";
+            // 使用 Info 作为页面标识
             Info instruct = new Info();
-            instruct.setName(matcher.group(1));
-            instruct.setNum(matcher.group(2));
-            link = String.format(link,generateUrl(instruct),instruct.getName()+"("+instruct.getNum()+")");
+            instruct.setTitle(matcher.group(1));
+            instruct.setSection(matcher.group(2));
+            link = String.format(link,generateUrl(instruct),instruct.getTitle()+"("+instruct.getSection()+")");
             matcher.appendReplacement(result,link);
         }
         matcher.appendTail(result);
@@ -839,52 +1153,82 @@ public class GroffToHtmlConverter {
 }
 
 class Info {
-    private String name;
-    private String num;
-    private String date;
-    private String ver;
+    /**
+     * 页面标题
+     */
+    private String title = "";
 
-    public Info(String name, String num, String date, String ver) {
-        this.name = name;
-        this.num = num;
-        this.date = date;
-        this.ver = ver;
-    }
+    /**
+     * 章节
+     */
+    private String section = "";
+    /**
+     * 创建或修改日期
+     */
+    private String date = "";
+    /**
+     * man 页面来源（程序或模块名称）
+     */
+    private String source = "";
+
+
+    private List<String> environment = new ArrayList<>();
+
+    /**
+     * man页面所属的手册（manual）或文档集
+     */
+    private String manual = "";
 
     public Info(){
 
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public String getTitle() {
+        return title;
     }
 
-    public void setNum(String num) {
-        this.num = num;
+    public void setTitle(String title) {
+        this.title = title;
     }
 
-    public void setDate(String date) {
-        this.date = date;
+    public String getSection() {
+        return section;
     }
 
-    public void setVer(String ver) {
-        this.ver = ver;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public String getNum() {
-        return num;
+    public void setSection(String section) {
+        this.section = section;
     }
 
     public String getDate() {
         return date;
     }
 
-    public String getVer() {
-        return ver;
+    public void setDate(String date) {
+        this.date = date;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
+
+    public String getManual() {
+        return manual;
+    }
+
+    public void setManual(String manual) {
+        this.manual = manual;
+    }
+
+    public List<String> getEnvironment() {
+        return environment;
+    }
+
+    public void setEnvironment(List<String> environment) {
+        this.environment = environment;
     }
 }
 class Heading {
@@ -913,24 +1257,3 @@ class Heading {
     }
 }
 
-class Instruct{
-
-    String name;
-    String level;
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getLevel() {
-        return level;
-    }
-
-    public void setLevel(String level) {
-        this.level = level;
-    }
-}

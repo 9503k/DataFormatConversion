@@ -1,9 +1,8 @@
-package zx.code.utils;
+package zx.code.utils.directory;
 
-import org.jruby.util.Dir;
-import zx.code.test.ReadCompressedGroffFile;
-import zx.code.utils.strategy.FilterStrategy;
-import zx.code.utils.strategy.Impl.PrefixFilterStrategy;
+import zx.code.utils.html.GroffToHtmlConverter;
+import zx.code.utils.directory.strategy.FilterStrategy;
+import zx.code.utils.directory.strategy.Impl.PrefixFilterStrategy;
 
 import java.io.File;
 import java.io.FileWriter;
