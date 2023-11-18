@@ -12,7 +12,7 @@ import java.lang.reflect.InvocationTargetException;
  * @@Description:
  */
 public class FileTest {
-    public static void main(String[] args) throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
+    public static void main(String[] args) throws Exception {
         String source ="D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man";   // 源文件地址
         String targetPrefix = "man";    // 筛选字符串
         String targetParentPath = "D:\\我的文件资料"; // 存储地址

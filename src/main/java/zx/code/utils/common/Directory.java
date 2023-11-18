@@ -1,4 +1,4 @@
-package zx.code.utils.directory;
+package zx.code.utils.common;
 
 import java.nio.file.FileSystems;
 import java.nio.file.Path;

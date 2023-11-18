@@ -1,5 +1,8 @@
 package zx.code.utils.directory;
 
+import org.jruby.RubyProcess;
+import zx.code.utils.common.Directory;
+import zx.code.utils.common.EnumOS;
 import zx.code.utils.html.GroffToHtmlConverter;
 import zx.code.utils.directory.strategy.FilterStrategy;
 import zx.code.utils.directory.strategy.Impl.PrefixFilterStrategy;
@@ -73,11 +76,18 @@ public class ListFilesInDirectory {
         }
     }
 
-    public void listFiles(String resourcePath,String targetParentPath) throws IOException {
-
+    public void listFiles(String resourcePath,String targetParentPath) throws Exception {
+//        targetParentPath = Paths.get(targetParentPath).toAbsolutePath().toString();
         // linux 和 windows切分目录的方式不同
-        String[] directoryParent = resourcePath.split("/");
-        directoryParent = resourcePath.split("\\\\");
+        String[] directoryParent = new String[0];
+        String osName = System.getProperty("os.name");
+        System.out.println("操作系统："+osName);
+        for (EnumOS enumOS : EnumOS.values()){
+            if(osName.toUpperCase().contains(enumOS.getOsName())){
+                directoryParent = resourcePath.split(enumOS.getSplitPathChar());
+            }
+        }
+
         String level1Name = directoryParent[directoryParent.length-1];
 
         // 一级目录
@@ -126,7 +136,6 @@ public class ListFilesInDirectory {
                     level2.setParentDirectory(level1.getDirectory());   // 存储时父文件地址
                     level2.setIsDirectory(true);                          // 设置为文件夹
                     children.add(level2);                               // 把level2挂载到level1
-
                     createFolder(level2.getDirectory());                // 创建 level2 的文件夹
                     ReadDirectoryAndFile(level2);                       // 扫描 level2 文件夹下的文件
                     creatIndexHtml(level2);
@@ -163,7 +172,7 @@ public class ListFilesInDirectory {
             if(files!=null){
                 for (File file : files) {
                     if (file.isDirectory()) {
-                        System.out.println("目录: " + file.getName());
+                        System.out.println("目录: " + file.getAbsolutePath());
 
                         // 1. 创建文件夹，以及Directory描述，挂载到父文件夹中
                         Directory newLevel = new Directory();
@@ -183,7 +192,7 @@ public class ListFilesInDirectory {
                         creatIndexHtml(newLevel);
 
                     } else {
-                        System.out.println("文件: " + file.getName());
+                        System.out.println("文件: " + file.getAbsolutePath());
 
                         // 文件的话，直接在目标文件夹下生成该文件，并把该文件Directory描述挂载到父目录
                         Directory newLevel = new Directory();
@@ -243,29 +252,26 @@ public class ListFilesInDirectory {
     }
 
     private static void createHtmlFile(Directory file,String htmlContext) {
+        System.out.println("写入父地址："+file.getParentDirectory());
         String filePath = file.getDirectory();
         createHtmlFile(filePath,htmlContext);
     }
     private static void createHtmlFile(String filePath,String htmlContext) {
-        File htmlFile = new File(filePath);
 
-        // 如果文件不存在，创建文件并写入HTML内容
-        if (!htmlFile.exists()) {
-            try (FileWriter writer = new FileWriter(htmlFile)) {
-                // 写入HTML内容
-                writer.write(htmlContext);
-                System.out.println("HTML文件创建成功");
-            } catch (IOException e) {
-                System.err.println("HTML文件创建失败：" + e.getMessage());
-            }
-        } else {
-            try (FileWriter writer = new FileWriter(htmlFile)) {
-                // 写入HTML内容
-                writer.write(htmlContext);
+        File htmlFile = new File(filePath);
+        System.out.println("写入地址："+filePath);
+        try (FileWriter writer = new FileWriter(htmlFile)) {
+            // 写入HTML内容
+            writer.write(htmlContext);
+
+            if (htmlFile.exists()) {
                 System.out.println("HTML文件覆盖成功");
-            } catch (IOException e) {
-                System.err.println("HTML文件覆盖失败：" + e.getMessage());
-            }        }
+            } else {
+                System.out.println("HTML文件创建成功");
+            }
+        } catch (IOException e) {
+            System.err.println("HTML文件操作失败：" + e.getMessage());
+        }
     }
 
     static String header = "<!DOCTYPE html>\n" +

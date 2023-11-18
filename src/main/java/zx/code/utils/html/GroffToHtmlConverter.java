@@ -1,7 +1,8 @@
 package zx.code.utils.html;
 
-import zx.code.utils.html.convert.common.EnumBlockListStyle;
-import zx.code.utils.html.convert.common.PatternReplaceEntity;
+import zx.code.Main;
+import zx.code.utils.common.EnumBlockListStyle;
+import zx.code.utils.common.PatternReplaceEntity;
 
 import java.io.*;
 import java.nio.file.FileSystems;
@@ -138,9 +139,15 @@ public class GroffToHtmlConverter {
         INLINE_TAGS.put(".ne","");      // 不知道是什么
         INLINE_TAGS.put(".St","%s");    // 不知道是什么
         INLINE_TAGS.put("tr","");
+        INLINE_TAGS.put(".tr","");      // 替换文本字符 麻烦！！！
+        INLINE_TAGS.put(".ds","");     // 定义字符串 麻烦！！！
+        INLINE_TAGS.put(".if","");     // 条件判断，也麻烦!!!
         INLINE_TAGS.put("'br","");
+        INLINE_TAGS.put(". ","");      // .加空格，不知道是个啥，直接删
         INLINE_TAGS.put(".rr","");
         INLINE_TAGS.put(".\\}","");
+        INLINE_TAGS.put("\\{","");
+        INLINE_TAGS.put("\\}","");
         INLINE_TAGS.put(".rm","");
         INLINE_TAGS.put(".Nd","- %s");  // col.1 中替换为 -
         INLINE_TAGS.put(".BI","<b><i>%s</i></b>");  // .BI 命令（用于生成同时具有斜体和粗体的文本）
@@ -300,7 +307,30 @@ public class GroffToHtmlConverter {
     };
 
     // 抽取 link(2) 的表达式
-    private static final Pattern EXTRACT_INSTRUCT = Pattern.compile("(\\w+)\\s*\\((\\d+\\w*)\\)");
+    private static final Pattern EXTRACT_INSTRUCT = Pattern.compile("([A-Za-z0-9\\-_]+)\\s*\\((\\d+\\w*)\\)");
+//    private static final Pattern EXTRACT_INSTRUCT = Pattern.compile("[>]*(\\w+[^\\s]+\\w*)\\s*\\((\\d+\\w*)\\)");
+//    private static final Pattern EXTRACT_INSTRUCT_ = Pattern.compile(">\\s*(\\w+[^\\s]+\\w*)\\s*[<]/[\\.]*[>]\\s*\\((\\d+\\w*)\\)");
+    // 抽取 <..> link <..> (2)
+    // 考虑有单个 X(7) 所以使用 (\w*[^\s]+\w*)
+    private static final Pattern EXTRACT_INSTRUCT_ = Pattern.compile("\\.*<[biu]>\\s*([A-Za-z0-9\\-_]+)\\s*<[^>]+[biu]>\\s*\\((\\d+\\w*)\\)");
+
+
+    // 抽取 <..> link (2)
+    private static final Pattern EXTRACT_INSTRUCT_1 = Pattern.compile("\\.*<[^>]>\\s*([A-Za-z0-9\\-_]+)\\s*<[^>]+>\\s*\\((\\d+\\w*)\\)");
+
+
+    // 抽取 > link (2)
+    private static final Pattern EXTRACT_INSTRUCT__ = Pattern.compile(">\\s*([A-Za-z0-9\\-_]+)\\s*\\((\\d+\\w*)\\)");
+
+    // 抽取 > link <..> (2)
+    private static final Pattern EXTRACT_INSTRUCT___ = Pattern.compile(">\\s*([A-Za-z0-9\\-_]+)\\s*<[^>]+>\\s*\\((\\d+\\w*)\\)");
+
+
+    // 抽取 link <..> (2)
+    private static final Pattern EXTRACT_INSTRUCT____ = Pattern.compile("\\s*([A-Za-z0-9\\-_]+)\\s*<[^>]+>\\s*\\((\\d+\\w*)\\)");
+
+
+
 
     // 抽取操作的参数识别 .Op
     private static final Pattern[] OPTIONS_PARAMETER_PATTERNS = {
@@ -903,9 +933,9 @@ public class GroffToHtmlConverter {
     public String localRefSelection(String line) {
         line = LOCAL_REF_RE1.matcher(line).replaceAll("<a href=\"$1#$2\">$1</a></i>($2)");
         line = LOCAL_REF_RE2.matcher(line).replaceAll("<a href=\"$1#$2\">$1</a></b>($2)");
-        return line;
+//        return line;
         // 重新检测了 .BR实现识别 instruct (num)
-//        return LOCAL_REF_RE3.matcher(line).replaceAll("<a href=\"$1#$2\">$1</a>($2)");
+        return LOCAL_REF_RE3.matcher(line).replaceAll("<a href=\"$1#$2\">$1</a>($2)");
 
     }
 
@@ -916,7 +946,7 @@ public class GroffToHtmlConverter {
      * @return {@link String}
      */
     public String globalRefSelection(String line) {
-        line = GLOBAL_REF_RE.matcher(line).replaceAll("<a href=\"$0\">$0</a>");
+//        line = GLOBAL_REF_RE.matcher(line).replaceAll("<a href=\"$0\">$0</a>");
         return MAILTO_REF_RE.matcher(line).replaceAll("<a href=\"mailto:$0\">$0</a>");
     }
 
@@ -927,7 +957,8 @@ public class GroffToHtmlConverter {
         if ("0".equals(positions.group(2))) {
             current_font_size = DEFAULT_FONT_SIZE;
         } else {
-            current_font_size += Integer.parseInt(positions.group(1) + positions.group(2));
+            current_font_size += Integer.parseInt((positions.group(1)==null?"":positions.group(1)) +
+                    positions.group(2)==null?"0":positions.group(2));
         }
     }
 
@@ -960,6 +991,8 @@ public class GroffToHtmlConverter {
                 return line;
             }
             updateFont(bestPositions);
+
+
             line = line.replaceFirst(replaceData, String.format(FONT_CHANGING_OPEN, current_font_size));
         }
     }
@@ -992,7 +1025,9 @@ public class GroffToHtmlConverter {
 
         for (String closingTag : CLOSING_TAG_VARIANTS) {
             if (line.contains(closingTag) && line.indexOf(closingTag) < minPos) {
-                String result = closing_tags.isEmpty() ? "</.....>" : closing_tags.remove(closing_tags.size() - 1);
+//                String result = closing_tags.isEmpty() ? "</.....>" : closing_tags.remove(closing_tags.size() - 1);
+                String result = closing_tags.isEmpty() ? " " : closing_tags.remove(closing_tags.size() - 1);
+
                 return line.replace(closingTag, result);
             }
         }
@@ -1000,14 +1035,9 @@ public class GroffToHtmlConverter {
         if (currentTag.isEmpty() || currentTag.equals("")) {
             return line;
         }
-        try{
-            if (!closing_tags.isEmpty() && closing_tags.get(closing_tags.size() - 1).equals(CLOSING_TAGS.get(currentTag))
-                    && closing_tags.get(closing_tags.size() - 1).equals("</i>")) {
-                return line.replace(currentTag, "");
-            }
-        }
-        catch (Exception e){
-            System.out.println(e);
+        if (!closing_tags.isEmpty() && closing_tags.get(closing_tags.size() - 1).equals(CLOSING_TAGS.get(currentTag))
+                && closing_tags.get(closing_tags.size() - 1).equals("</i>")) {
+            return line.replace(currentTag, "");
         }
 
 
@@ -1060,6 +1090,7 @@ public class GroffToHtmlConverter {
                 line = func.apply(line.substring(tag.length()));
             }
         }
+
         for (Map.Entry<String, String> entry : INLINE_TAGS.entrySet()) {
             String tag = entry.getKey();
             String result = entry.getValue();
@@ -1068,16 +1099,17 @@ public class GroffToHtmlConverter {
                 line = String.format(result, line.substring(tag.length()).trim());
             }
         }
+        // 编译超链接符串
+        line = compileInstruction(line);
         // 替换所有要替换的数据
         line = replaceTags(line);
 //        // 构建表格数据
 //        line = BuildtableText(line);
-        // 编译超链接符串
-        line = compileInstruction(line);
 
+        // 这种获取方式我不喜欢，不能自定义url，所以我使用了 compileInstruction生成
         if (!pre_open) {
-            line = localRefSelection(line);
-//            line = globalRefSelection(line);
+//            line = localRefSelection(line);
+            line = globalRefSelection(line);
         }
         // 判断是不是只有文本
         if(source.trim().equals(line)){
@@ -1150,21 +1182,79 @@ public class GroffToHtmlConverter {
         return line;
     }
     private String compileInstruction(String line){
+
+
         Matcher matcher = EXTRACT_INSTRUCT.matcher(line);
         StringBuffer  result = new StringBuffer();
-
+        String link = "<a href = \"%s\">%s</a>";
         if (matcher.find()){
-            String link = "<a href = \"%s\">%s</a>";
-            // 使用 Info 作为页面标识
-            Info instruct = new Info();
-            instruct.setTitle(matcher.group(1));
-            instruct.setSection(matcher.group(2));
-            link = String.format(link,generateUrl(instruct),instruct.getTitle()+"("+instruct.getSection()+")");
-            matcher.appendReplacement(result,link);
-        }
-        matcher.appendTail(result);
+            if(line.contains("4*a")){
+                System.out.println();
+            }
+            Matcher matcher1 = EXTRACT_INSTRUCT_.matcher(line);
+            Matcher matcher1_1 = EXTRACT_INSTRUCT_1.matcher(line);
+            Matcher matcher2 = EXTRACT_INSTRUCT__.matcher(line);
+            Matcher matcher3 = EXTRACT_INSTRUCT___.matcher(line);
+            Matcher matcher4 = EXTRACT_INSTRUCT____.matcher(line);
+            if(matcher1.find()){
+                matcher1 = EXTRACT_INSTRUCT_.matcher(line);
+                while (matcher1.find()){
+                    // 使用 Info 作为页面标识
+                    Info instruct = new Info();
+                    instruct.setTitle(matcher1.group(1));
+                    instruct.setSection(matcher1.group(2));
+                    String newLink = String.format(link,generateUrl(instruct),matcher1.group(0));
+                    line = line.replace(matcher1.group(0),newLink);
+                }
 
-        return result.toString();
+                return line;
+            }
+            else if(matcher1_1.find()){
+                Info instruct = new Info();
+                instruct.setTitle(matcher1_1.group(1));
+                instruct.setSection(matcher1_1.group(2));
+                String newLink = String.format(link,generateUrl(instruct),matcher1_1.group(0));
+                line = line.replace(matcher1_1.group(0),newLink);
+                return line;
+            }
+            else if (matcher2.find()){
+                Info instruct = new Info();
+                instruct.setTitle(matcher2.group(1));
+                instruct.setSection(matcher2.group(2));
+                String newLink = String.format(link,generateUrl(instruct),matcher2.group(0));
+                line = line.replace(matcher2.group(0),newLink);
+                return line;
+            }
+            else if(matcher3.find()){
+                Info instruct = new Info();
+                instruct.setTitle(matcher3.group(1));
+                instruct.setSection(matcher3.group(2));
+                String newLink = String.format(link,generateUrl(instruct),matcher3.group(0));
+                line = line.replace(matcher3.group(1),newLink);
+
+                return line;
+            }
+            else if (matcher4.find()){
+                Info instruct = new Info();
+                instruct.setTitle(matcher4.group(1));
+                instruct.setSection(matcher4.group(2));
+                String newLink = String.format(link,generateUrl(instruct),matcher4.group(0));
+                line = line.replace(matcher4.group(0),newLink);
+                return line;
+            }
+            else {
+
+                // 使用 Info 作为页面标识
+                Info instruct = new Info();
+//            instruct.setTitle(matcher.group(1).replaceAll("[<]\\w*[>]","").replaceAll("\\.*[>]",""));
+                instruct.setTitle(matcher.group(1));
+                instruct.setSection(matcher.group(2));
+                String newLink = String.format(link,generateUrl(instruct),instruct.getTitle()+"("+instruct.getSection()+")");
+                line = line.replace(matcher.group(0),newLink);
+                return line;
+            }
+        }
+        return line;
     }
 }
 

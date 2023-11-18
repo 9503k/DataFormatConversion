@@ -16,7 +16,9 @@ public class SinglonTestMain {
     public static void main(String[] args) {
 //        String filePath = "D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man\\man1\\col.1.gz";
 //        String filePath = "D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man\\man2\\link.2.gz";
-        String filePath = "D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man\\man8\\netstat.8.gz";
+//        String filePath = "D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man\\man8\\netstat.8.gz";
+//        String filePath = "D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man\\man8\\sfdisk.8.gz";
+        String filePath = "D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man\\man1\\tclsh.1.gz";
 
 
         try {
