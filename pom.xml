@@ -45,7 +45,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass>zx.code.test.GroffToAsciiDocConverter</mainClass>
+                            <mainClass>zx.code.Main</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

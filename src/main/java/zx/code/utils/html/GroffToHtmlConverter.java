@@ -359,7 +359,8 @@ public class GroffToHtmlConverter {
             result = matcher.group(1);
         }
         else if(data.length()>1) {
-            result = data.split(" ", 2)[1];
+//            result = data.split(" ", 2)[1];
+            result = data;
         }
         return String.format("%s<h3 id=\"%s\">%s</h2><div style=\"padding-left: 3em;\">",
                 closing, getHeaderName(result, 2), result);
@@ -710,6 +711,9 @@ public class GroffToHtmlConverter {
 
             listStyle = EnumBlockListStyle.TAG;
         }
+        else if(data.contains("column")){
+            listStyle = EnumBlockListStyle.TABLE;
+        }
         else {
             return "<br/>";
         }
@@ -719,15 +723,8 @@ public class GroffToHtmlConverter {
 
     private Boolean firstBlockListrow = true;
     private String _blockListrow(String data){
-        if(listStyle != EnumBlockListStyle.TAG){
-            if(firstBlockListrow){
-                return listStyle.getListDom2().getStartTag()+ data ;
-            }
-            return listStyle.getListDom2().getEndTag()+
-                    listStyle.getListDom2().getStartTag()+
-                    data ;
-        }
-        else {
+
+        if(listStyle == EnumBlockListStyle.TAG){
             if(firstBlockListrow){
                 return listStyle.getListDom2().getStartTag()+ data + listStyle.getListDom3().getStartTag();
             }
@@ -736,19 +733,35 @@ public class GroffToHtmlConverter {
                     data +
                     listStyle.getListDom3().getStartTag()
                     ;
+        }
+        else if(listStyle == EnumBlockListStyle.TABLE){
+            return data;
+        }
+        else {
+            if(firstBlockListrow){
+                return listStyle.getListDom2().getStartTag()+ data ;
+            }
+            return listStyle.getListDom2().getEndTag()+
+                    listStyle.getListDom2().getStartTag()+
+                    data ;
+
 
         }
     }
 
     private String _blockListEnd(String data){
 
-        if(listStyle != EnumBlockListStyle.TAG){
-            return listStyle.getListDom2().getEndTag()+listStyle.getListDom1().getEndTag();
+        if(listStyle == EnumBlockListStyle.TAG){
+            // tag 类型需要单独处理
+            return  listStyle.getListDom3().getEndTag() + listStyle.getListDom2().getEndTag()+listStyle.getListDom1().getEndTag();
+        }
+        else if (listStyle == EnumBlockListStyle.TABLE){
+            return  listStyle.getListDom2().getEndTag()+listStyle.getListDom1().getEndTag();
+
         }
         else {
-            // tag 类型需要单独处理
+            return listStyle.getListDom2().getEndTag()+listStyle.getListDom1().getEndTag();
 
-            return  listStyle.getListDom3().getEndTag() + listStyle.getListDom2().getEndTag()+listStyle.getListDom1().getEndTag();
         }
 
     }
@@ -908,6 +921,9 @@ public class GroffToHtmlConverter {
     }
 
     public void updateFont(Matcher positions) {
+        if(positions==null){
+            return;
+        }
         if ("0".equals(positions.group(2))) {
             current_font_size = DEFAULT_FONT_SIZE;
         } else {

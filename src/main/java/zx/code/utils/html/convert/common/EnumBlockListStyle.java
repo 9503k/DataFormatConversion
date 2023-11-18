@@ -20,7 +20,12 @@ public enum EnumBlockListStyle {
      * 带标签的列表
      */
     TAG(new TagInfo("<dl>","</dl>"),new TagInfo("<dt>","</dt>"),new TagInfo("<dd>","</dd>")),
+
+    TABLE(new TagInfo("<table>","</table>"),new TagInfo("<tr>","</tr>"),new TagInfo("<td>","</td>"))
+
+
     ;
+
 
     EnumBlockListStyle(TagInfo listDom1,TagInfo listDom2){
         this.listDom1 = listDom1;

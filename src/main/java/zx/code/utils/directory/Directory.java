@@ -28,8 +28,11 @@ public class Directory {
      */
     private Boolean IsDirectory;
 
-    public void setDirectory(Boolean directory) {
-        IsDirectory = directory;
+    public void setIsDirectory(Boolean isDirectory) {
+        this.IsDirectory = isDirectory;
+    }
+    public Boolean getIsDirectory(){
+        return IsDirectory;
     }
 
     public String getSourceDirectory() {

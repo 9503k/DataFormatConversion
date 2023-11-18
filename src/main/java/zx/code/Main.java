@@ -1,51 +1,38 @@
 package zx.code;
 
-import zx.code.utils.html.GroffToHtmlConverter;
+import org.jruby.RubyProcess;
+import zx.code.utils.directory.ListFilesInDirectory;
+import zx.code.utils.directory.strategy.Impl.PrefixFilterStrategy;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 
 /**
  * @author: loubaole
- * @date: ${DATE} ${TIME}
+ * @date: 2023/11/18 11:22
  * @@Description:
  */
 public class Main {
 
-    public static void main(String[] args) {
-        String filePath = "D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man\\man1\\col.1.gz";
-//        String filePath = "D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man\\man2\\link.2.gz";
-
-        try {
-            GroffToHtmlConverter converter = new GroffToHtmlConverter("D:\\我的文件资料\\man");
-            String htmlContent = converter.readCompressedGroffFile(filePath);
-            createHtmlFile("C:/Users/LBL/Desktop/test.html",htmlContent);
-//            System.out.println(htmlContent);
-        } catch (Exception e) {
-            e.printStackTrace();
+    public static void main(String[] args) throws InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
+//        String source ="D:\\我的文件资料\\代码仓库\\Java\\DataFormatConversion\\src\\main\\resources\\man";   // 源文件地址
+//        String targetPrefix = "man";    // 筛选字符串
+//        String targetParentPath = "D:\\我的文件资料"; // 存储地址
+//
+//        ListFilesInDirectory files = new ListFilesInDirectory(PrefixFilterStrategy.class,targetPrefix);
+//
+//        files.listFiles(source,targetParentPath);
+        if(args.length<3){
+            System.out.println("参数缺失，请检查参数！");
         }
-    }
+        String sourcePath = args[0];
+        String targetPrefix = args[1];
+        String targetPath = args[2];
+        ListFilesInDirectory files = new ListFilesInDirectory(PrefixFilterStrategy.class,targetPrefix);
 
-    private static void createHtmlFile(String filePath, String htmlContext) {
-        File htmlFile = new File(filePath);
+        files.listFiles(sourcePath,targetPath);
+        System.out.println("生成成功！");
 
-        // 如果文件不存在，创建文件并写入HTML内容
-        if (!htmlFile.exists()) {
-            try (FileWriter writer = new FileWriter(htmlFile)) {
-                // 写入HTML内容
-                writer.write(htmlContext);
-                System.out.println("HTML文件创建成功");
-            } catch (IOException e) {
-                System.err.println("HTML文件创建失败：" + e.getMessage());
-            }
-        } else {
-            try (FileWriter writer = new FileWriter(htmlFile)) {
-                // 写入HTML内容
-                writer.write(htmlContext);
-                System.out.println("HTML文件创建成功");
-            } catch (IOException e) {
-                System.err.println("HTML文件创建失败：" + e.getMessage());
-            }        }
+
     }
 }
